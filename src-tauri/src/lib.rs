@@ -1,10 +1,10 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-use tauri::Manager;
+// use tauri::Manager; // Commented out or remove if not used elsewhere
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::process::Stdio;
-use tauri::api::dialog;
+use tauri_plugin_dialog::DialogExt; // Added DialogExt
 
 #[derive(Debug, Deserialize)]
 struct CompressionSettings {
@@ -40,20 +40,32 @@ fn greet(name: &str) -> String {
 async fn select_video_file(app: tauri::AppHandle) -> Result<String, String> {
     println!("调用select_video_file命令");
     
-    // 使用Tauri 2.0的dialog API
-    let file_path = dialog::blocking::FileDialogBuilder::new()
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
         .add_filter("视频文件", &["mp4", "mov", "avi", "mkv", "wmv", "flv"])
-        .pick_file();
-    
-    match file_path {
-        Some(path) => {
-            let path_str = path.to_string_lossy().to_string();
+        .pick_file(move |file_path_option| {
+            tx.send(file_path_option).unwrap_or_else(|e| eprintln!("Failed to send file_path_option: {}",e));
+        });
+
+    // Note: .recv() is blocking. For a truly async command, you might use tokio::sync::oneshot
+    // or ensure this command is running in a way that blocking is acceptable (Tauri often handles this).
+    match rx.recv() {
+        Ok(Some(file_path_enum)) => {
+            let path_str = match file_path_enum {
+                tauri_plugin_dialog::FilePath::Path(pb) => pb.to_string_lossy().into_owned(),
+                tauri_plugin_dialog::FilePath::Url(uri_str) => uri_str.to_string(),
+            };
             println!("选择的文件路径: {}", path_str);
             Ok(path_str)
         },
-        None => {
+        Ok(None) => {
             println!("用户取消了文件选择");
             Err("未选择文件".to_string())
+        }
+        Err(e) => {
+            eprintln!("Failed to receive file path from channel: {}", e);
+            Err("文件选择时发生内部错误".to_string())
         }
     }
 }
