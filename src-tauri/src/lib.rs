@@ -2,6 +2,8 @@
 use tauri::Manager;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
+use std::process::Stdio;
 
 #[derive(Debug, Deserialize)]
 struct CompressionSettings {
@@ -10,6 +12,17 @@ struct CompressionSettings {
     bitrate: String,
     audio_quality: String,
     custom_settings: bool,
+    crf_value: u8,
+}
+
+#[derive(Debug, Deserialize, Serialize)] // Added Serialize for settings to be passed from frontend if needed, and for println
+struct AudioCompressionSettings {
+    quality: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ImageCompressionSettings {
+    quality: u8, // Quality for images, typically 0-100
 }
 
 #[derive(Debug, Serialize)]
@@ -43,27 +56,70 @@ async fn compress_video(
     input_path: String,
     output_path: String,
     settings: CompressionSettings,
-) -> Result<(), String> {
-    // 这里只是模拟压缩过程，实际应用中需要调用 FFmpeg
-    // 在实际应用中，您需要使用 FFmpeg 库或命令行工具来处理视频
-    
-    let window = app_handle.get_window("main").unwrap();
-    
-    for i in 0..=100 {
-        // 模拟进度
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        
-        // 发送进度更新
-        window.emit("compression:progress", ProgressPayload { progress: i as f32 })
-            .map_err(|e| e.to_string())?;
+) -> Result<String, String> {
+    // Construct the FFmpeg command
+    let mut command = Command::new("ffmpeg");
+    command.arg("-i")
+        .arg(&input_path)
+        .arg("-c:v")
+        .arg("libx264")
+        .arg("-crf")
+        .arg(settings.crf_value.to_string())
+        .arg("-c:a")
+        .arg("copy")
+        .arg(&output_path)
+        .arg("-y"); // Automatically overwrite output file
+
+    // Execute the command
+    let output = command.output().map_err(|e| format!("Failed to execute FFmpeg command: {}", e))?;
+
+    if output.status.success() {
+        Ok(format!("Video compressed successfully. FFmpeg output:\n{}", String::from_utf8_lossy(&output.stdout)))
+    } else {
+        Err(format!("FFmpeg command failed with error:\n{}\nFFmpeg stderr:\n{}", output.status, String::from_utf8_lossy(&output.stderr)))
     }
-    
-    // 在实际应用中，这里应该是真正的视频压缩逻辑
-    println!("压缩设置: {:?}", settings);
-    println!("输入文件: {}", input_path);
-    println!("输出文件: {}", output_path);
-    
-    Ok(())
+}
+
+#[tauri::command]
+async fn compress_audio(
+    app_handle: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    settings: AudioCompressionSettings,
+) -> Result<String, String> {
+    println!("Attempting to compress audio...");
+    println!("App Handle: {:?}", app_handle.package_info().name); // Example of using app_handle
+    println!("Input Path: {}", input_path);
+    println!("Output Path: {}", output_path);
+    println!("Audio Settings: {:?}", settings);
+
+    // Simulate some work
+    // In a real scenario, you would call an audio compression library or FFmpeg here
+
+    Ok(format!(
+        "Audio processing stub: Successfully processed '{}' to '{}' with quality '{}'",
+        input_path, output_path, settings.quality
+    ))
+}
+
+#[tauri::command]
+async fn compress_image(
+    app_handle: tauri::AppHandle,
+    input_path: String,
+    output_path: String,
+    settings: ImageCompressionSettings,
+) -> Result<String, String> {
+    println!("Attempting to compress image...");
+    println!("App Handle: {:?}", app_handle.package_info().name);
+    println!("Input Path: {}", input_path);
+    println!("Output Path: {}", output_path);
+    println!("Image Settings: {:?}", settings);
+
+    // Simulate image processing
+    Ok(format!(
+        "Image processing stub: Successfully processed '{}' to '{}' with quality {}",
+        input_path, output_path, settings.quality
+    ))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,7 +128,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             select_video_file,
-            compress_video
+            compress_video,
+            compress_audio,
+            compress_image // Added new command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
