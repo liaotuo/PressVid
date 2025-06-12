@@ -1,12 +1,44 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useEffect } from 'react';
+
+// 扩展File接口，添加Tauri特有的path属性
+interface TauriFile extends File {
+  path?: string;
+}
 
 interface DropZoneProps {
   onFileSelect: (filePath: string) => void;
+  prompt: string;
 }
 
-export function DropZone({ onFileSelect }: DropZoneProps) {
+export function DropZone({ onFileSelect, prompt }: DropZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+
+  // 监听文件拖放事件
+  useEffect(() => {
+    // 设置文件拖放监听
+    const handleFileDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0] as TauriFile;
+        if (file.path) {
+          handleDroppedFile(file.path);
+        }
+      }
+    };
+
+    // 添加全局拖放事件监听器
+    document.addEventListener('drop', handleFileDrop);
+    document.addEventListener('dragover', (e) => e.preventDefault());
+
+    return () => {
+      // 清理事件监听器
+      document.removeEventListener('drop', handleFileDrop);
+      document.removeEventListener('dragover', (e) => e.preventDefault());
+    };
+  }, [onFileSelect]);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -17,24 +49,42 @@ export function DropZone({ onFileSelect }: DropZoneProps) {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
 
-    // 在实际应用中，这里需要通过 Tauri API 处理文件路径
-    // 这里只是一个示例
+    // 在Tauri应用中处理拖放的文件
     if (e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      // 由于浏览器安全限制，我们只能获取文件名，而不是完整路径
-      // 实际应用中需要通过 Tauri API 处理
-      onFileSelect(file.name);
+      const file = e.dataTransfer.files[0] as TauriFile;
+      // 在Tauri中，我们可以通过file.path获取完整路径
+      if (file.path) {
+        handleDroppedFile(file.path);
+      } else {
+        console.error('无法获取文件路径，可能是浏览器安全限制');
+        // 如果无法直接获取路径，回退到文件选择对话框
+        await handleFileSelect();
+      }
+    }
+  };
+
+  const handleDroppedFile = async (filePath: string) => {
+    try {
+      // 调用Rust后端处理拖放的文件
+      const result = await invoke<string>("handle_dropped_file", { filePath });
+      if (result) {
+        onFileSelect(result);
+      }
+    } catch (error) {
+      console.error('处理拖放文件出错:', error);
     }
   };
 
   const handleFileSelect = async () => {
+    if (isSelecting) return; // 防止重复点击
+    
     try {
-      // 使用 Tauri 的命令调用 Rust 端的文件选择功能
-      // 注意：需要在 Rust 端实现 select_video_file 命令
+      setIsSelecting(true);
+      // 使用Tauri的命令调用Rust端的文件选择功能
       const filePath = await invoke<string>("select_video_file");
       
       if (filePath) {
@@ -42,6 +92,8 @@ export function DropZone({ onFileSelect }: DropZoneProps) {
       }
     } catch (error) {
       console.error('选择文件出错:', error);
+    } finally {
+      setIsSelecting(false);
     }
   };
 
@@ -71,16 +123,19 @@ export function DropZone({ onFileSelect }: DropZoneProps) {
         <line x1="12" y1="3" x2="12" y2="15" />
       </svg>
       <p className="mb-2 text-sm text-center text-gray-700 dark:text-gray-300">
-        <span className="font-medium">点击选择</span> 或拖放视频文件到这里
+        <span className="font-medium">点击选择</span> 或拖放文件到这里
       </p>
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        支持 MP4, MOV, AVI, MKV, WMV, FLV 格式
+        {prompt}
       </p>
       <button
         onClick={handleFileSelect}
-        className="mt-3 px-4 py-1.5 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors"
+        disabled={isSelecting}
+        className={`mt-3 px-4 py-1.5 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition-colors ${
+          isSelecting ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
       >
-        选择视频
+        {isSelecting ? '选择中...' : '选择文件'}
       </button>
     </div>
   );

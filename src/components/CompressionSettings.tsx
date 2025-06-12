@@ -136,27 +136,26 @@ export function CompressionSettings({ onSettingsChange }: CompressionSettingsPro
           </div>
 
           <div>
-            <div>
-              <label htmlFor="crfValue" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                Quality (CRF Value)
-              </label>
-              <input
-                type="number"
-                id="crfValue"
-                value={settings.crfValue}
-                onChange={(e) => handleSettingChange('crfValue', e.target.value)}
-                className="w-full rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 px-3 py-1.5 text-sm"
-                min="0"
-                max="51"
-                step="1"
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Lower values mean better quality and larger file size. 0 is lossless. 18-28 is a good range.
-              </p>
-            </div>
+            <label htmlFor="crfValue" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+              Quality (CRF Value)
+            </label>
+            <input
+              type="number"
+              id="crfValue"
+              value={settings.crfValue}
+              onChange={(e) => handleSettingChange('crfValue', e.target.value)}
+              className="w-full rounded border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 px-3 py-1.5 text-sm"
+              min="0"
+              max="51"
+              step="1"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Lower values mean better quality and larger file size. 0 is lossless. 18-28 is a good range.
+            </p>
+          </div>
 
-            {/* Bitrate input is hidden when custom settings and CRF are active */}
-            {!settings.customSettings && ( // Or some other logic if bitrate is still relevant
+          {/* Bitrate input is hidden when custom settings and CRF are active */}
+          {!settings.customSettings && (
             <div>
               <label htmlFor="bitrate" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
                 视频码率 (kbps) - (Will be ignored if CRF is used)
@@ -172,7 +171,7 @@ export function CompressionSettings({ onSettingsChange }: CompressionSettingsPro
                 step="100"
               />
             </div>
-            )
+          )}
 
           <div>
             <label htmlFor="audioQuality" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
