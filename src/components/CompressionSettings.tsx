@@ -172,7 +172,7 @@ export function CompressionSettings({ onSettingsChange }: CompressionSettingsPro
                 step="100"
               />
             </div>
-            )}
+            )
 
           <div>
             <label htmlFor="audioQuality" className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
