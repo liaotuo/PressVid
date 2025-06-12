@@ -125,41 +125,42 @@ async fn compress_video(
         command.arg("-crf")
             .arg(settings.crfValue.to_string());
         
-        // 如果不是保持原始分辨率，则设置分辨率
+        // 只有当用户明确选择了不同于"original"的分辨率时，才改变分辨率
         if settings.resolution != "original" {
             let resolution = match settings.resolution.as_str() {
                 "480p" => "854:480",
                 "720p" => "1280:720",
                 "1080p" => "1920:1080",
-                _ => "1280:720", // 默认720p
+                _ => "", // 默认不改变分辨率
             };
-            command.arg("-vf")
-                .arg(format!("scale={}", resolution));
+            
+            if !resolution.is_empty() {
+                command.arg("-vf")
+                    .arg(format!("scale={}", resolution));
+            }
         }
     } else {
-        // 使用预设模式
+        // 使用预设模式，但只改变比特率，不改变分辨率
         match settings.preset.as_str() {
             "small" => {
                 command.arg("-crf").arg("28")
-                    .arg("-preset").arg("fast")
-                    .arg("-vf").arg("scale=854:480");
+                    .arg("-preset").arg("fast");
             },
             "balanced" => {
                 command.arg("-crf").arg("23")
-                    .arg("-preset").arg("medium")
-                    .arg("-vf").arg("scale=1280:720");
+                    .arg("-preset").arg("medium");
             },
             "high" => {
                 command.arg("-crf").arg("18")
-                    .arg("-preset").arg("slow")
-                    .arg("-vf").arg("scale=1920:1080");
+                    .arg("-preset").arg("slow");
             },
             _ => {
                 command.arg("-crf").arg("23")
-                    .arg("-preset").arg("medium")
-                    .arg("-vf").arg("scale=1280:720");
+                    .arg("-preset").arg("medium");
             }
         }
+        
+        // 不再添加 -vf scale 参数，保持原始分辨率
     }
 
     // 设置音频编码
@@ -244,6 +245,7 @@ async fn compress_image(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             select_video_file,
