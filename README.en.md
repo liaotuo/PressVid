@@ -1,43 +1,50 @@
 # 🎬 PressVid
 
-> 🇺🇸 English README | [中文说明 →](./README.md)
+> 🇬🇧 English README | [中文说明 →](./README.md)
 
 ---
 
-**PressVid** is a free, open-source, cross-platform video compression tool powered by FFmpeg, supporting both macOS and Windows. Our mission is to help you effortlessly compress videos with a simple click, wrapped in a clean and modern user interface.
+**PressVid** is a free, open-source, cross-platform video compression tool built on FFmpeg, supporting macOS and Windows. We strive to help you "compress videos" with a minimalist design and efficient technology.
 
 ---
 
-## ✨ Features
+## ✨ Key Features
 
-- ⚡ **Fast Compression**: Multiple built-in presets for quick results  
-- 💻 **Cross-Platform**: Compatible with macOS (Intel & Apple Silicon) and Windows  
-- 🎨 **Modern UI**: Built with Tauri + React for a smooth user experience  
-- 🔧 **Customizable**: Adjust resolution, bitrate, audio settings, and more  
-- 🌓 **Light & Dark Mode**: Adapts to your system theme  
-- 🆓 **Completely Free & Open Source**
+- ⚡ **Fast Compression**: One-click compression with built-in presets
+- 💻 **Cross-Platform**: Supports macOS (Intel / M series) and Windows
+- 🎨 **Modern Interface**: Clean UI built with Tauri + React
+- 🔧 **Customizable**: Adjust resolution, bitrate, audio settings, and more
+- 🌓 **Light/Dark Mode**: Adapts to your system theme
+- 🆓 **Free & Open Source**: No cost, no ads, no tracking
 
 ---
 
 ## 📦 Tech Stack
 
-- [FFmpeg](https://ffmpeg.org/) — Video processing engine  
-- [Tauri](https://tauri.app/) — Lightweight cross-platform desktop framework  
-- [React](https://reactjs.org/) + [Tailwind CSS](https://tailwindcss.com/) — Frontend UI  
-- [TypeScript](https://www.typescriptlang.org/) — Type-safe development  
+- [FFmpeg](https://ffmpeg.org/) — Video processing engine
+- [Tauri](https://tauri.app/) — High-performance cross-platform desktop framework
+- [React](https://reactjs.org/) + [Tailwind CSS](https://tailwindcss.com/) — Frontend UI
+- [TypeScript](https://www.typescriptlang.org/) — Type-safe development
 - [Rust](https://www.rust-lang.org/) — Backend performance core
 
 ---
 
-## 🚀 Getting Started (For Developers)
+## 📸 Screenshots
+
+> _Coming soon!_
+
+---
+
+## 🚀 Quick Start (Developers)
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/PressVid.git
+# Clone repository
+git clone https://github.com/yourusername/PressVid.git
 cd PressVid
 
 # Install dependencies
 pnpm install
 
-# Run the development server
+# Start development
 pnpm dev
+``` 
