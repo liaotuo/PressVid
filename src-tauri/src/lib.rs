@@ -2,9 +2,13 @@
 // use tauri::Manager; // Commented out or remove if not used elsewhere
 use std::path::Path;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use tauri_plugin_dialog::DialogExt; // Added DialogExt
+use tauri::Window; // Added for command signatures
+use regex::Regex; // Added for video compression progress
+use std::io::{BufRead, BufReader}; // Added for reading ffmpeg output
+// Note: tokio::time::sleep is used directly in the functions where needed.
+// If used more broadly, 'use tokio::time::sleep;' could be added here.
 
 #[derive(Debug, Deserialize)]
 struct CompressionSettings {
@@ -26,8 +30,9 @@ struct ImageCompressionSettings {
     quality: u8, // Quality for images, typically 0-100
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct ProgressPayload {
+    task_id: String,
     progress: f32,
 }
 
@@ -85,6 +90,7 @@ async fn handle_dropped_file(file_path: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn compress_video(
+    window: tauri::Window,
     input_path: String,
     output_path: String,
     settings: CompressionSettings,
@@ -180,24 +186,81 @@ async fn compress_video(
     println!("执行FFmpeg命令: {:?}", command);
 
     // 执行命令
-    let output = match command.stdout(Stdio::piped())
+    let mut child = command.stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output() {
-            Ok(output) => output,
-            Err(e) => {
-                let error_msg = format!("执行FFmpeg命令失败: {}", e);
-                println!("错误: {}", error_msg);
-                return Err(error_msg);
+        .spawn()
+        .map_err(|e| format!("执行FFmpeg命令失败: {}", e))?;
+
+    let stderr = child.stderr.take().ok_or_else(|| "无法捕获 ffmpeg stderr".to_string())?;
+
+    // BufReader and BufRead are now imported at the top
+    // Arc was not used and has been removed.
+
+    let reader = BufReader::new(stderr);
+    let task_id = input_path.clone(); // Use input_path as a simple task_id
+
+    // Regex to find duration and time
+    // Duration: 00:00:20.02, start: 0.000000, bitrate: 1310 kb/s
+    // frame=  299 fps= 29 q=-1.0 Lsize=    2627kB time=00:00:09.96 bitrate=2150.7kbits/s speed=0.976x
+    let re_duration = regex::Regex::new(r"Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap();
+    let re_time = regex::Regex::new(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap();
+    let mut total_duration_secs: Option<f32> = None;
+
+    for line_result in reader.lines() {
+        match line_result {
+            Ok(line) => {
+                println!("FFMPEG_STDERR: {}", line); // Log ffmpeg output for debugging
+
+                if total_duration_secs.is_none() {
+                    if let Some(caps) = re_duration.captures(&line) {
+                        let hours = caps.get(1).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let minutes = caps.get(2).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let seconds = caps.get(3).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let subsecs = caps.get(4).unwrap().as_str().parse::<f32>().unwrap_or(0.0) / 100.0;
+                        total_duration_secs = Some(hours * 3600.0 + minutes * 60.0 + seconds + subsecs);
+                        println!("Total duration: {:?} seconds", total_duration_secs);
+                    }
+                }
+
+                if let Some(duration_secs) = total_duration_secs {
+                    if let Some(caps) = re_time.captures(&line) {
+                        let hours = caps.get(1).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let minutes = caps.get(2).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let seconds = caps.get(3).unwrap().as_str().parse::<f32>().unwrap_or(0.0);
+                        let subsecs = caps.get(4).unwrap().as_str().parse::<f32>().unwrap_or(0.0) / 100.0;
+                        let current_time_secs = hours * 3600.0 + minutes * 60.0 + seconds + subsecs;
+
+                        let progress = (current_time_secs / duration_secs) * 100.0;
+                        let payload = ProgressPayload {
+                            task_id: task_id.clone(),
+                            progress: progress.min(100.0), // Cap progress at 100%
+                        };
+                        window.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit progress: {}", e));
+                    }
+                }
             }
-        };
+            Err(e) => {
+                eprintln!("Error reading ffmpeg stderr line: {}", e);
+            }
+        }
+    }
+
+    let output = child.wait_with_output().map_err(|e| format!("等待FFmpeg命令完成失败: {}", e))?;
 
     if output.status.success() {
+        // Ensure 100% progress is sent upon completion
+        let payload = ProgressPayload {
+            task_id: task_id.clone(),
+            progress: 100.0,
+        };
+        window.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit final progress: {}", e));
+
         let success_msg = format!("视频压缩成功！输出文件: {}", output_path);
         println!("{}", success_msg);
         Ok(success_msg)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let error_msg = format!("FFmpeg命令执行失败: {}", stderr);
+        let stderr_output = String::from_utf8_lossy(&output.stderr);
+        let error_msg = format!("FFmpeg命令执行失败: {}", stderr_output);
         println!("错误: {}", error_msg);
         Err(error_msg)
     }
@@ -205,6 +268,7 @@ async fn compress_video(
 
 #[tauri::command]
 async fn compress_audio(
+    window: tauri::Window,
     input_path: String,
     output_path: String,
     settings: AudioCompressionSettings,
@@ -214,8 +278,20 @@ async fn compress_audio(
     println!("Output Path: {}", output_path);
     println!("Audio Settings: {:?}", settings);
 
-    // Simulate some work
-    // In a real scenario, you would call an audio compression library or FFmpeg here
+    let task_id = input_path.clone(); // Use input_path as a simple task_id
+
+    // Simulate progress
+    for i in 0..=10 {
+        let progress = i as f32 * 10.0;
+        let payload = ProgressPayload {
+            task_id: task_id.clone(),
+            progress,
+        };
+        window.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for audio: {}", e));
+        println!("Simulated audio progress: {}% for task {}", progress, task_id);
+        // Simulate work being done
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await; // tokio::time::sleep is used directly
+    }
 
     Ok(format!(
         "Audio processing stub: Successfully processed '{}' to '{}' with quality '{}'",
@@ -225,6 +301,7 @@ async fn compress_audio(
 
 #[tauri::command]
 async fn compress_image(
+    window: tauri::Window,
     input_path: String,
     output_path: String,
     settings: ImageCompressionSettings,
@@ -234,7 +311,21 @@ async fn compress_image(
     println!("Output Path: {}", output_path);
     println!("Image Settings: {:?}", settings);
 
-    // Simulate image processing
+    let task_id = input_path.clone(); // Use input_path as a simple task_id
+
+    // Simulate progress
+    for i in 0..=10 {
+        let progress = i as f32 * 10.0;
+        let payload = ProgressPayload {
+            task_id: task_id.clone(),
+            progress,
+        };
+        window.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for image: {}", e));
+         println!("Simulated image progress: {}% for task {}", progress, task_id);
+        // Simulate work being done
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; // tokio::time::sleep is used directly
+    }
+
     Ok(format!(
         "Image processing stub: Successfully processed '{}' to '{}' with quality {}",
         input_path, output_path, settings.quality
@@ -254,6 +345,11 @@ pub fn run() {
             compress_audio,
             compress_image
         ])
+        .setup(|app| {
+            // Ensure `regex` crate is available if not already part of the project dependencies.
+            // This is a placeholder comment; actual dependency management is in Cargo.toml.
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
