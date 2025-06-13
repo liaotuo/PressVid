@@ -120,9 +120,28 @@ function App() {
         outputPath: outputFile,
         settings: videoSettings,
       });
+
+      // 解析 successMessage 提取压缩后大小和比例
+      let compressedSize: number | undefined;
+      let sizeChangeText: string | undefined;
+
+      const regex = /大小: (\d+) 字节, 相较原始文件(.*)\)/;
+      const match = successMessage.match(regex);
+
+      if (match && match[1] && match[2]) {
+        compressedSize = parseInt(match[1], 10);
+        sizeChangeText = match[2].trim();
+      }
+
       setTasks(prevTasks =>
         prevTasks.map(task =>
-          task.id === taskId ? { ...task, status: 'completed', progress: 100 } : task
+          task.id === taskId ? {
+            ...task,
+            status: 'completed',
+            progress: 100,
+            compressedSize, // Add compressed size
+            sizeChangeText, // Add size change text
+          } : task
         )
       );
       setCurrentStatusMessage(successMessage);

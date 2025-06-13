@@ -12,12 +12,23 @@ export interface Task {
   progress: number;
   type: ActiveView;
   error?: string;
+  compressedSize?: number; // Added: 压缩后文件大小 (bytes)
+  sizeChangeText?: string; // Added: 大小变化描述 (例如: "减少了 20.50%")
 }
 
 interface TaskListProps {
   tasks: Task[];
   getFileName: (path: string) => string; // Pass getFileName as a prop
 }
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
 
 export const TaskList: React.FC<TaskListProps> = ({ tasks, getFileName }) => {
   if (tasks.length === 0) {
@@ -50,9 +61,21 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, getFileName }) => {
             </p>
           )}
           {task.status === 'completed' && (
-            <p className="text-xs text-green-500 dark:text-green-400 mt-1">
-              输出: {getFileName(task.outputFile)}
-            </p>
+            <>
+              <p className="text-xs text-green-500 dark:text-green-400 mt-1">
+                输出: {getFileName(task.outputFile)}
+              </p>
+              {task.compressedSize !== undefined && (
+                <p className="text-xs text-green-500 dark:text-green-400 mt-1">
+                  压缩后大小: {formatBytes(task.compressedSize)}
+                </p>
+              )}
+              {task.sizeChangeText && (
+                <p className="text-xs text-green-500 dark:text-green-400 mt-1">
+                  大小变化: {task.sizeChangeText}
+                </p>
+              )}
+            </>
           )}
         </div>
       ))}

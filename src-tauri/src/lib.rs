@@ -1,12 +1,14 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-// use tauri::Manager; // Commented out or remove if not used elsewhere
+// use tauri::Manager; // Add this line
+use tauri::Emitter; // Add this line to bring emit into scope
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
 use tauri_plugin_dialog::DialogExt; // Added DialogExt
-use tauri::Window; // Added for command signatures
+// use tauri::Window; // Added for command signatures
 use regex::Regex; // Added for video compression progress
 use std::io::{BufRead, BufReader}; // Added for reading ffmpeg output
+use std::fs; // Add this line for file system operations
 // Note: tokio::time::sleep is used directly in the functions where needed.
 // If used more broadly, 'use tokio::time::sleep;' could be added here.
 
@@ -90,7 +92,7 @@ async fn handle_dropped_file(file_path: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn compress_video(
-    window: tauri::Window,
+    app_handle: tauri::AppHandle,
     input_path: String,
     output_path: String,
     settings: CompressionSettings,
@@ -106,6 +108,12 @@ async fn compress_video(
         println!("错误: {}", error_msg);
         return Err(error_msg);
     }
+
+    // 获取输入文件大小
+    let input_metadata = fs::metadata(&input_path)
+        .map_err(|e| format!("无法获取输入文件元数据: {}", e))?;
+    let original_size = input_metadata.len();
+    println!("原始文件大小: {} 字节", original_size);
 
     // 检查ffmpeg是否可用
     let ffmpeg_check = Command::new("ffmpeg")
@@ -235,7 +243,7 @@ async fn compress_video(
                             task_id: task_id.clone(),
                             progress: progress.min(100.0), // Cap progress at 100%
                         };
-                        window.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit progress: {}", e));
+                        app_handle.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit progress: {}", e));
                     }
                 }
             }
@@ -253,9 +261,33 @@ async fn compress_video(
             task_id: task_id.clone(),
             progress: 100.0,
         };
-        window.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit final progress: {}", e));
+        app_handle.emit("PROGRESS_EVENT", payload).unwrap_or_else(|e| eprintln!("Failed to emit final progress: {}", e));
 
-        let success_msg = format!("视频压缩成功！输出文件: {}", output_path);
+        // 获取输出文件大小
+        let output_metadata = fs::metadata(&output_path)
+            .map_err(|e| format!("无法获取输出文件元数据: {}", e))?;
+        let compressed_size = output_metadata.len();
+        println!("压缩后文件大小: {} 字节", compressed_size);
+
+        // 计算压缩比例
+        let change_percentage = if original_size > 0 {
+            ((compressed_size as f64 - original_size as f64) / original_size as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let size_change_str = if change_percentage > 0.0 {
+            format!("增加了 {:.2}%", change_percentage)
+        } else if change_percentage < 0.0 {
+            format!("减少了 {:.2}%", -change_percentage)
+        } else {
+            "保持不变".to_string()
+        };
+        
+        let success_msg = format!(
+            "视频压缩成功！输出文件: {} (大小: {} 字节, 相较原始文件{})",
+            output_path, compressed_size, size_change_str
+        );
         println!("{}", success_msg);
         Ok(success_msg)
     } else {
@@ -268,7 +300,7 @@ async fn compress_video(
 
 #[tauri::command]
 async fn compress_audio(
-    window: tauri::Window,
+    app_handle: tauri::AppHandle,
     input_path: String,
     output_path: String,
     settings: AudioCompressionSettings,
@@ -287,8 +319,8 @@ async fn compress_audio(
             task_id: task_id.clone(),
             progress,
         };
-        window.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for audio: {}", e));
-        println!("Simulated audio progress: {}% for task {}", progress, task_id);
+        app_handle.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for audio: {}", e));
+         println!("Simulated audio progress: {}% for task {}", progress, task_id);
         // Simulate work being done
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await; // tokio::time::sleep is used directly
     }
@@ -301,7 +333,7 @@ async fn compress_audio(
 
 #[tauri::command]
 async fn compress_image(
-    window: tauri::Window,
+    app_handle: tauri::AppHandle,
     input_path: String,
     output_path: String,
     settings: ImageCompressionSettings,
@@ -320,7 +352,7 @@ async fn compress_image(
             task_id: task_id.clone(),
             progress,
         };
-        window.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for image: {}", e));
+        app_handle.emit("PROGRESS_EVENT", payload.clone()).unwrap_or_else(|e| eprintln!("Failed to emit progress for image: {}", e));
          println!("Simulated image progress: {}% for task {}", progress, task_id);
         // Simulate work being done
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await; // tokio::time::sleep is used directly
@@ -345,7 +377,7 @@ pub fn run() {
             compress_audio,
             compress_image
         ])
-        .setup(|app| {
+        .setup(|_app| {
             // Ensure `regex` crate is available if not already part of the project dependencies.
             // This is a placeholder comment; actual dependency management is in Cargo.toml.
             Ok(())
